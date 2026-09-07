@@ -1,0 +1,27 @@
+{
+  "name": "nativelite",
+  "owner": {
+    "name": "Jeffrie Budde",
+    "email": "39542105+JSBtechnologies@users.noreply.github.com"
+  },
+  "metadata": {
+    "description": "nativelite plugins for Claude Code: skills and tooling for the agent-terminal suite, starting with atrium's coordination skills."
+  },
+  "plugins": [
+    {
+      "name": "atrium",
+      "source": "./atrium",
+      "description": "Coordination skills for atrium (tmux for coding agents): atrium-delegate and atrium-coordinate teach a hosted claude to drive the atrium control plane, delegating and coordinating work across teammate agent panes.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Jeffrie Budde"
+      },
+      "homepage": "https://github.com/nativelite/atrium",
+      "repository": "https://github.com/nativelite/marketplace",
+      "license": "MIT",
+      "keywords": ["atrium", "agents", "coordination", "delegation", "skills", "nativelite"],
+      "category": "workflow",
+      "strict": false
+    }
+  ]
+}
