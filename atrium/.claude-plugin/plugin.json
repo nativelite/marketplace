@@ -1,13 +1,13 @@
 {
   "name": "atrium",
   "version": "0.1.0",
-  "description": "Coordination skills for atrium: atrium-delegate (discretionary hand-off of independent work) and atrium-coordinate (lead a team of agents via atrium ctl).",
+  "description": "Fleet & coordination skills for atrium: atrium-fleet (design, configure, and run saved atrium.fleet.json fleets), atrium-coordinate (lead a team of agents via atrium ctl), and atrium-delegate (discretionary hand-off of independent work).",
   "author": {
     "name": "Jeffrie Budde"
   },
   "homepage": "https://github.com/nativelite/atrium",
   "repository": "https://github.com/nativelite/marketplace",
   "license": "MIT",
-  "keywords": ["atrium", "agents", "coordination", "delegation", "nativelite"],
+  "keywords": ["atrium", "agents", "coordination", "delegation", "fleet", "nativelite"],
   "skills": ["./skills/"]
 }
