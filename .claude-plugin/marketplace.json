@@ -11,15 +11,15 @@
     {
       "name": "atrium",
       "source": "./atrium",
-      "description": "Coordination skills for atrium (tmux for coding agents): atrium-delegate and atrium-coordinate teach a hosted claude to drive the atrium control plane, delegating and coordinating work across teammate agent panes.",
-      "version": "0.1.0",
+      "description": "Fleet & coordination skills for atrium (tmux for coding agents): atrium-fleet designs, configures, and runs saved atrium.fleet.json rosters, while atrium-coordinate and atrium-delegate teach a hosted claude to drive the atrium control plane, coordinating and delegating work across teammate agent panes.",
+      "version": "0.2.0",
       "author": {
         "name": "Jeffrie Budde"
       },
       "homepage": "https://github.com/nativelite/atrium",
       "repository": "https://github.com/nativelite/marketplace",
       "license": "MIT",
-      "keywords": ["atrium", "agents", "coordination", "delegation", "skills", "nativelite"],
+      "keywords": ["atrium", "agents", "coordination", "delegation", "fleet", "skills", "nativelite"],
       "category": "workflow",
       "strict": false
     }

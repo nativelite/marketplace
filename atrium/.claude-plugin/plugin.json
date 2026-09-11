@@ -1,6 +1,6 @@
 {
   "name": "atrium",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Fleet & coordination skills for atrium: atrium-fleet (design, configure, and run saved atrium.fleet.json fleets), atrium-coordinate (lead a team of agents via atrium ctl), and atrium-delegate (discretionary hand-off of independent work).",
   "author": {
     "name": "Jeffrie Budde"
