@@ -29,7 +29,8 @@ want you to fan work out *right now* from inside a running pane → the runtime 
    each work in isolation (worktrees) or share one tree? Hands-off or supervised?
    Ask — don't assume. A fleet is worth getting right because it's re-run.
    Ask what the agents will **build or test**, and the machine's cores and RAM.
-   That decides the resource budget (below), and it is not optional.
+   That decides how much the fleet may compile at once (below), and it is not
+   optional: design the roster to fit the machine.
 2. **Propose a roster** in prose first: one line per agent (name, model, what it
    owns, whether it gets a worktree, **which build/test commands it may run**).
    Get a nod before writing JSON.
@@ -72,6 +73,9 @@ compatible), and an empty `agents` list is rejected.
 | `worktrees` | bool | shorthand: every agent gets its **own** worktree named after itself (full fan-out) |
 | `worktree_base` | string | where worktree dirs go; omit → sibling `../.atrium-worktrees/<fleet>/`. Set it to give two concurrent sessions on one repo distinct bases |
 | `worktree_seed` | array of strings | untracked files/dirs to link into each fresh worktree (git only checks out tracked files, so a needed `.env` would be missing). Hardlinks files / junctions dirs; never seeds build caches |
+| `build_jobs` | number | total compiler jobs **all** agents' cargo builds share (the session compile pool). Default one per core, bounded by RAM; `0` = off. See [Compiling is the scarce resource](#compiling-is-the-scarce-resource-required-for-any-fleet-that-builds) |
+| `memory_mb` | number | fixed ceiling on the memory everything the agents run may commit (Windows). Default dynamic; `0` = off |
+| `deny` | array of strings | commands **no** claude agent in the session may run, including workers spawned later: claude rules (`"Bash(git push --force*)"`) or command prefixes (`"cargo test --workspace"`) |
 
 ### Agent-level keys
 
@@ -89,6 +93,7 @@ compatible), and an empty `agents` list is rejected.
 | `prompt` | string | system-prompt suffix → `--append-system-prompt` (behavior, not permissions). The home for the agent's **role, owned files and limits** (see instruction layers). atrium folds it into one block with its own worktree/ctl text; **atrium 0.32.0 and earlier dropped it** whenever `allow_ctl` or a worktree was set, so on those versions put the role in the kickoff |
 | `identity` | string | per-agent credential, overrides the fleet default |
 | `can_spawn` | bool | may this agent create its own teammates via `atrium ctl spawn`? Defaults **false** for a fleet agent |
+| `deny` | array of strings | commands **this** agent may not run, on top of the fleet's `deny`. The way to stop a worker running workspace-wide builds (claude agents only) |
 
 Launch arg order per agent: `cmd… [--add-dir …] [--append-system-prompt prompt]
 [--model M] [--effort E] "<kickoff>"`. You can equivalently inline `--model` in
@@ -121,17 +126,24 @@ Launch arg order per agent: `cmd… [--add-dir …] [--append-system-prompt prom
       "grid": "2x3",
       "allow_ctl": true,
       "topics": ["build", "review"],
+      "build_jobs": 8,
+      "memory_mb": 32768,
+      "deny": ["cargo build --release", "cargo bench"],
       "agents": [
         { "name": "lead", "cmd": ["claude", "--model", "opus"],
           "kickoff": "You lead. Read PLAN.md. Assign via board/bus, don't code. `atrium ctl bus sub build review`." },
         { "name": "api", "cmd": ["claude", "--model", "sonnet"], "worktree": "api",
-          "kickoff": "You own src/api.rs in your own worktree (already placed — don't cd, commit on your branch). Implement per PLAN.md, `python dev.py check` green, commit, then `atrium ctl bus pub build msg=api done`." },
+          "deny": ["cargo test --workspace", "cargo build --workspace", "python dev.py check"],
+          "prompt": "You own crates/api. Build and test only that crate: cargo test -p api.",
+          "kickoff": "You own crates/api in your own worktree (already placed — don't cd, commit on your branch). Implement per PLAN.md, `cargo test -p api` green, commit, then `atrium ctl bus pub build msg=api done`." },
         { "name": "store", "cmd": ["claude", "--model", "sonnet"], "worktree": "store",
-          "kickoff": "You own src/store.rs in your own worktree. … `atrium ctl bus pub build msg=store done`." },
+          "deny": ["cargo test --workspace", "cargo build --workspace", "python dev.py check"],
+          "prompt": "You own crates/store. Build and test only that crate: cargo test -p store.",
+          "kickoff": "You own crates/store in your own worktree. … `atrium ctl bus pub build msg=store done`." },
         { "name": "reviewer", "cmd": ["claude", "--model", "opus"],
           "kickoff": "Adversarial reviewer in the main tree. Verify each branch against real behavior; block the integrator on the bus until issues are fixed. Don't rubber-stamp." },
         { "name": "integrator", "cmd": ["claude", "--model", "sonnet"],
-          "kickoff": "Main tree. Wait until api+store report done and reviewer is clear, then merge their branches, run the gate green, commit. Don't reinstall." }
+          "kickoff": "Main tree. Wait until api+store report done and reviewer is clear, then merge their branches one at a time, run the full gate (`python dev.py check`) green after each, commit. You are the only agent that runs the full gate. Don't reinstall." }
       ]
     }
   }
@@ -225,62 +237,104 @@ The runtime coordination commands (what your kickoffs tell agents to run):
 `atrium ctl board set/get/list`, `atrium ctl bus pub/sub/feed/resolve`. See the
 atrium-coordinate skill for the full board/bus playbook.
 
-## Resource budget (required for any fleet that builds or tests)
+## Compiling is the scarce resource (required for any fleet that builds)
 
-A fleet multiplies whatever each agent runs. atrium hosts the agents; it cannot
-stop them from exhausting the machine. When the system runs out of memory, every
-process fails at once, atrium included, and when atrium dies every pane dies
-with it. **The fleet design is the only real protection, so budget it.**
+**Design the fleet to fit the machine it runs on, not the size of the task.**
+Agents are cheap: an idle agent CLI is a few hundred MB. Compiling is not: one
+`rustc` job peaks at 1–3 GB, a link step more, and a toolchain starts one job
+per core by default. So a fleet's real cost is **how much it compiles at the
+same time**, and in any compiled-language fleet (Rust, C/C++, Go, Java/Kotlin,
+Swift, large TypeScript type-checks) that is the number you design around. A
+fleet that only reads, reviews, writes docs or runs Python scripts can skip
+this section.
 
-**What happened without a budget.** A 10-agent fleet ran on 16 cores and 64 GB
-RAM. Seven agents, each in its own worktree, ran `cargo test --workspace` at the
-same moment. Each worktree had its own build directory, so nothing was shared,
-and cargo defaults to one compiler job per core. That meant dozens of `rustc`
-processes, plus a release build. System memory (RAM plus pagefile) ran out, and
-`rustc`, a Claude Code hook and atrium all failed allocations in the same second.
-The session and every pane were lost.
+**What happened without it.** A 10-agent fleet ran on 16 cores and 64 GB RAM.
+Seven agents, each in its own worktree, ran `cargo test --workspace` at the same
+moment: seven cold build directories, each compiling with 16 jobs, plus a release
+build. System memory (RAM plus pagefile) ran out, and `rustc`, a Claude Code hook
+and atrium all failed allocations in the same second. The session and every
+pane were lost, and other programs on the machine crashed with it.
 
-**atrium's own limit doesn't cover this.** `ATRIUM_MAX_PANES` and
-`ATRIUM_AGENT_MB` cap how many panes `atrium ctl spawn` may add, based on what an
-agent CLI costs (a few hundred MB each). A fleet file's roster is launched as
-written, and neither cap accounts for the builds the agents run. Builds are what
-dominate memory and CPU.
+### The rules
 
-**Budget rule.** Across the agents that may build at the same time:
+These are design rules for the roster, not suggestions for the agents:
 
-- jobs per build × concurrent builders ≈ **core count**
-- peak memory per build × concurrent builders ≤ **about half of RAM**
+1. **Never design a fleet where several agents compile the whole project at the
+   same time.** At most **one** workspace-wide build or test runs across the
+   entire fleet at once. Seven agents each running the full gate is the failure
+   above, whatever the machine.
+2. **Workers compile only what they own.** A worker that owns one crate or
+   package builds and tests only that (`cargo test -p <crate>`,
+   `go test ./pkg/...`). No `--workspace`, `--release` or benchmark builds unless
+   the role exists for that.
+3. **One agent owns the full gate.** Normally the integrator runs the
+   workspace-wide build and tests, after merging, one branch at a time. If more
+   than one agent genuinely needs a full build, they take turns through a board
+   lock (below).
+4. **Size from the machine.** Ask for cores and RAM before proposing a roster.
+   Across the agents that can compile at once:
+   - compiler jobs in total ≈ **core count**
+   - peak memory per build × builds at once ≤ **about half of RAM** (assume
+     2–4 GB per Rust build when unsure)
 
-A Rust workspace test build can peak at several GB. When unsure, assume 2–4 GB
-per concurrent builder, and set fewer builders rather than more.
+   If the plan needs more than that, change the plan: fewer builders, a smaller
+   set of worktrees, or serialized phases. Don't just raise limits.
+5. **Plan the work so compiling is serialized.** Order phases so builders
+   finish and hand off rather than all building at the end: workers check their
+   own crate, report done, and the integrator merges and gates in sequence.
+6. **Fewer worktrees than agents.** Read-only reviewers and leads don't need
+   one, and every worktree is another cold build directory to compile from
+   scratch.
 
-**Enforce it with settings the tools obey, not just prose.** Agents under
-pressure ignore a "please don't" in their prompt, but a build tool can't ignore
-its own config. Use all three layers:
+### What atrium enforces (atrium newer than 0.32.0)
 
-1. **Cap each build's parallelism.**
-   - **Rust:** commit a `.cargo/config.toml` with `[build]` / `jobs = 2`.
-     Commit it: the default worktree base is a sibling directory *outside* the
-     repo, so an untracked config in the repo root never reaches the worktrees,
-     while a tracked one is checked out in every worktree. For test threads,
-     set `RUST_TEST_THREADS`.
-   - **Any toolchain, via environment:** set the variable in the shell *before*
-     `atrium fleet up`, because every pane inherits atrium's environment.
-     Examples: `CARGO_BUILD_JOBS=2`, `MAKEFLAGS=-j2`,
-     `CMAKE_BUILD_PARALLEL_LEVEL=2`, `GOFLAGS=-p=2`.
-2. **Scope each agent's commands.** A worker that owns one crate or package runs
-   only that crate's build and tests (`cargo test -p <crate>`, never
-   `--workspace`). No `--release` or benchmark builds unless the role requires
-   them. Write these rules into the instruction layers below.
-3. **Serialize the expensive gate.** Only one agent at a time runs a
-   workspace-wide build: normally the integrator, or whoever holds a board lock.
-   Tell agents to run `atrium ctl board claim build-lock` before a full build
-   and `atrium ctl board release build-lock` after. A denied claim names the
-   current holder, so the agent waits and retries. The lease lasts 5 minutes and
-   re-claiming renews it, so a long build must re-claim.
+Rules the agents are merely told get ignored under pressure. atrium now backs
+the rules above with limits the agents can't talk their way past. **Set these
+keys explicitly in any fleet that compiles**, so the budget is in the reviewed
+file and on the banner rather than left to defaults.
 
-Also: use fewer worktrees than agents where possible (read-only reviewers don't
-need one), and note that every extra worktree is another cold build directory.
+| key | what atrium does | limit to know |
+|-----|------------------|---------------|
+| `build_jobs` | One **shared compile pool** for the whole session. Every pane gets `CARGO_MAKEFLAGS` pointing at it, so all agents' cargo builds together run at most `build_jobs` compiler jobs (plus one per running cargo). An agent's `-j` or `CARGO_BUILD_JOBS` can't get past it. Default: one per core, bounded by RAM. `0` = off. | **cargo only.** `make`, `ninja`, `cmake`, `go`, `gradle` and `tsc` ignore it; cap those with environment variables (below). |
+| `memory_mb` | A **memory guard** (Windows): a ceiling on the committed memory of everything the panes run, with atrium itself outside it. The default is dynamic and tracks the machine's free memory. At 90% it stops the largest build process (never an agent) and posts it to the bus; past the ceiling, allocations fail inside the panes instead of across the machine. | Windows only; unix has no guard. It is a backstop, not a budget: a fleet that routinely hits it is designed wrong. |
+| `deny` (fleet and agent) | A **deny list** passed to claude as `--disallowedTools`. Fleet-level rules bind every claude pane in the session, including workers spawned later; agent-level rules bind that agent. Every claude pane also refuses commands naming `CARGO_MAKEFLAGS`, so no agent can strip the pool. | Claude agents only. It matches command **text**, so it catches an agent, not a determined workaround. |
+
+**Use `deny` to enforce rules 1–3.** Give each worker the commands its role
+must not run, and leave the integrator free to run the gate:
+
+```json
+{ "name": "api", "cmd": ["claude"], "worktree": "api",
+  "deny": ["cargo test --workspace", "cargo build --workspace",
+           "cargo build --release", "cargo bench", "python dev.py check"],
+  "prompt": "You own crates/api. Build and test only that: cargo test -p api." },
+{ "name": "integrator", "cmd": ["claude"],
+  "prompt": "You run the full gate, after merging, one branch at a time." }
+```
+
+A denied command comes back to the agent as refused, so the agent learns the
+rule the moment it tries to break it, instead of the machine finding out.
+
+**For toolchains the pool doesn't cover**, cap parallelism in the environment
+*before* `atrium fleet up` (every pane inherits atrium's environment), or in a
+committed config:
+
+- `MAKEFLAGS=-j2`, `CMAKE_BUILD_PARALLEL_LEVEL=2`, `GOFLAGS=-p=2`, Gradle
+  `org.gradle.workers.max=2`.
+- A Rust `.cargo/config.toml` `[build] jobs = 2` still works as a per-build cap
+  under the pool. Commit it: worktrees live outside the repo and only see
+  tracked files.
+
+**Serialize full builds with a board lock** when more than one agent needs them:
+`atrium ctl board claim build-lock` before, `atrium ctl board release build-lock`
+after. A denied claim names the holder, so the agent waits and retries. The
+lease lasts 5 minutes and re-claiming renews it, so a long build must re-claim.
+
+**Check the banner before pressing Enter.** The posture line states the budget,
+for the build fleet above: `… ctl on, 8 compile jobs shared, memory capped at
+32.0 GiB, 4 deny rules`. The deny count is the session-wide rules (two built-in,
+plus the fleet's `deny` and `ATRIUM_DENY`); per-agent rules aren't in it. `build pool
+OFF` or `memory guard OFF` there on a fleet that compiles means the file needs
+fixing first.
 
 ## Instruction layers: CLAUDE.md, `prompt`, kickoff
 
@@ -309,8 +363,10 @@ A fleet section for the root `CLAUDE.md`, to adapt:
   a change elsewhere, stop and post it on the bus; don't make it yourself.
 - **Build budget.** Run only your own package's build and tests
   (`cargo test -p <your-crate>`). Never `--workspace`, `--release` or benches
-  unless your role says so. Build parallelism is capped in `.cargo/config.toml`;
-  do not override it (no `-j`, no `CARGO_BUILD_JOBS`).
+  unless your role says so. All builds in this session share one compile pool
+  sized to the machine; don't try to raise or bypass it (no `-j`, no
+  `CARGO_BUILD_JOBS`, never touch `CARGO_MAKEFLAGS`). A refused command is a
+  rule, not an obstacle to route around.
 - **Full builds take the lock.** Before any workspace-wide build or test, run
   `atrium ctl board claim build-lock`. If it's denied, wait and retry; don't
   build anyway. Run `atrium ctl board release build-lock` when done.
@@ -342,11 +398,17 @@ Write rules as concrete commands an agent can follow, not as goals.
 
 ## Gotchas checklist
 
-- Agents that build or test, with no build-parallelism cap and no scoped
-  commands → N worktrees × all cores of compilers → the machine runs out of
-  memory and atrium dies with every pane. Budget it (see Resource budget).
+- Several agents that each run the full build or test at the same time → N
+  worktrees × all cores of compilers → the machine runs out of memory and atrium
+  dies with every pane. One full gate at a time; workers build only their own
+  package, enforced with per-agent `deny` (see Compiling is the scarce resource).
+- Compiled-language fleet without explicit `build_jobs` / `memory_mb` / `deny` →
+  the budget is left to defaults instead of the reviewed file. Set them.
+- Non-cargo builds (`make`, `ninja`, `go`, `gradle`, `tsc`) → the compile pool
+  doesn't cover them; cap them in the environment before `fleet up`.
 - Rust job cap in an *untracked* `.cargo/config.toml` → worktrees outside the repo
-  never see it; commit it, or export `CARGO_BUILD_JOBS` before `fleet up`.
+  never see it; commit it.
+- `deny` on a codex agent → not enforced (claude only); the banner warns.
 - Shared rules in an uncommitted `CLAUDE.md` → worktree agents never see them.
 - Role put only in `prompt` on atrium ≤ 0.32.0 with `allow_ctl` or worktrees →
   silently dropped; put it in the kickoff there.
