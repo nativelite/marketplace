@@ -286,7 +286,7 @@ These are design rules for the roster, not suggestions for the agents:
    one, and every worktree is another cold build directory to compile from
    scratch.
 
-### What atrium enforces (atrium newer than 0.32.0)
+### What atrium enforces (atrium 0.33.0 and newer)
 
 Rules the agents are merely told get ignored under pressure. atrium now backs
 the rules above with limits the agents can't talk their way past. **Set these
