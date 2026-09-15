@@ -336,6 +336,17 @@ plus the fleet's `deny` and `ATRIUM_DENY`); per-agent rules aren't in it. `build
 OFF` or `memory guard OFF` there on a fleet that compiles means the file needs
 fixing first.
 
+**Read the `PREFLIGHT` block (atrium 0.34.0 and newer).** Every warning is
+gathered into one bold yellow block right before the verdict (plain
+`atrium fleet: warning:` lines when piped). None of them stop the launch, so
+fix the file rather than pressing Enter past them. The warnings cover:
+- governed flags removed from a `cmd`
+- `deny` rules that can't bind
+- the build pool off
+- ctl with no spawner
+- worktrees outside a git repo
+- a roster at or over the host pane cap
+
 ## Instruction layers: CLAUDE.md, `prompt`, kickoff
 
 Each agent starts blank. Give it three layers, each with a distinct job. Don't
@@ -409,6 +420,12 @@ Write rules as concrete commands an agent can follow, not as goals.
 - Rust job cap in an *untracked* `.cargo/config.toml` → worktrees outside the repo
   never see it; commit it.
 - `deny` on a codex agent → not enforced (claude only); the banner warns.
+- `--dangerously-skip-permissions`, `--permission-mode` or `--allowedTools` in a
+  `cmd` → removed at launch, and a preflight warning says so (on atrium ≤ 0.33.0
+  the banner claimed this but the flag still reached the agent). Set the posture
+  with `trust`.
+- More agents than the host pane cap → a preflight warning, not a refusal; the
+  cap still stops mid-run `ctl spawn` (raise it with `ATRIUM_MAX_PANES`).
 - Shared rules in an uncommitted `CLAUDE.md` → worktree agents never see them.
 - Role put only in `prompt` on atrium ≤ 0.32.0 with `allow_ctl` or worktrees →
   silently dropped; put it in the kickoff there.
