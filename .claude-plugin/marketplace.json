@@ -12,7 +12,7 @@
       "name": "atrium",
       "source": "./atrium",
       "description": "Fleet & coordination skills for atrium (tmux for coding agents): atrium-fleet designs, configures, and runs saved atrium.fleet.json rosters, while atrium-coordinate and atrium-delegate teach a hosted claude to drive the atrium control plane, coordinating and delegating work across teammate agent panes.",
-      "version": "0.2.7",
+      "version": "0.2.8",
       "author": {
         "name": "Jeffrie Budde"
       },
