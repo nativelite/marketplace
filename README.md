@@ -14,12 +14,23 @@ straight into Claude Code instead of copying folders by hand.
 
 ### `atrium` — coordination skills
 
-The two skills that teach a hosted `claude` to use [atrium](https://github.com/nativelite/atrium)'s
-control plane. Install them with:
+The three skills that teach a hosted agent to use [atrium](https://github.com/nativelite/atrium)'s
+control plane. Install them in Claude Code with:
 
 ```
 /plugin install atrium@nativelite
 ```
+
+or in [Codex](https://developers.openai.com/codex), which reads this marketplace as it is:
+
+```
+codex plugin marketplace add nativelite/marketplace
+codex plugin add atrium@nativelite
+```
+
+Codex lists them as `atrium:atrium-coordinate` and so on. To install by hand
+instead, copy the three `atrium/skills/` folders into `~/.agents/skills/` (every
+project) or a repo's `.agents/skills/`.
 
 - **`atrium-delegate`** — the agent hands off a substantial *independent* piece of
   work when it genuinely pays, and does small or dependent work inline.
@@ -31,6 +42,8 @@ control plane. Install them with:
 
 Without these, a hosted agent does not know atrium's control plane exists, so
 install them before running `atrium --allow-ctl` sessions or `atrium fleet up`.
+(From atrium 0.40.2 a codex pane is also told about `atrium ctl` by atrium
+itself, the way a claude pane always was; the skills carry the full playbook.)
 
 The skills teach the shell verbs (`atrium ctl …`). atrium's **mod**, the Claude
 Code plugin of function hooks that gives a pane the same control plane as typed
