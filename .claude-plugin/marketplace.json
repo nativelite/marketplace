@@ -5,14 +5,14 @@
     "email": "39542105+JSBtechnologies@users.noreply.github.com"
   },
   "metadata": {
-    "description": "nativelite plugins for Claude Code: skills and tooling for the agent-terminal suite, starting with atrium's coordination skills."
+    "description": "nativelite plugins for Claude Code and Codex: skills and tooling for the agent-terminal suite, starting with atrium's coordination skills, which both agents run."
   },
   "plugins": [
     {
       "name": "atrium",
       "source": "./atrium",
-      "description": "Fleet & coordination skills for atrium (tmux for coding agents): atrium-fleet designs, configures, and runs saved atrium.fleet.json rosters, while atrium-coordinate and atrium-delegate teach a hosted claude to drive the atrium control plane, coordinating and delegating work across teammate agent panes.",
-      "version": "0.2.13",
+      "description": "Fleet & coordination skills for atrium (tmux for coding agents), for Claude Code and Codex alike: atrium-fleet designs, configures, and runs saved atrium.fleet.json rosters (claude agents, codex agents, or both), while atrium-coordinate and atrium-delegate teach a hosted claude or codex to drive the atrium control plane, coordinating and delegating work across teammate agent panes.",
+      "version": "0.2.16",
       "author": {
         "name": "Jeffrie Budde"
       },
